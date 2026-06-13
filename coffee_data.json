@@ -1,0 +1,80 @@
+# GreenSource — Deploy Guide (Render)
+
+Your app is now a real web app: Google sign-in + Stripe subscriptions + server-enforced
+free tier (100 beans, 2 calculator uses). This guide gets it live in ~15 minutes.
+
+We'll use **Render.com** (free tier, supports Node, easy). You can use Railway/Fly too —
+same idea.
+
+---
+
+## STEP 1 — Put the code on GitHub
+1. Create a free account at github.com if you don't have one.
+2. Create a new repository called `greensource` (Private is fine).
+3. Upload the entire `greensource-backend` folder contents (package.json, server.js,
+   db.js, coffee_data.json, and the `public/` folder).
+   - Easiest: on the repo page click **Add file -> Upload files**, drag everything in.
+
+## STEP 2 — Create the Render service
+1. Go to **render.com** -> sign up (you can sign in with GitHub).
+2. Click **New +** -> **Web Service**.
+3. Connect your `greensource` GitHub repo.
+4. Settings:
+   - **Runtime:** Node
+   - **Build Command:** `npm install`
+   - **Start Command:** `npm start`
+   - **Instance type:** Free
+5. Click **Create Web Service** (it will build; first build ~2-3 min).
+
+## STEP 3 — Add environment variables
+In Render -> your service -> **Environment** -> add each of these
+(copy from `.env.example`):
+
+| Key | Value |
+|-----|-------|
+| GOOGLE_CLIENT_ID | 496092754009-ho2vavhgip5qdm3r8vratiokpiflbvqa.apps.googleusercontent.com |
+| STRIPE_SECRET_KEY | your `sk_test_...` secret key |
+| STRIPE_PRICE_MONTHLY | price_1ThyXoLXAj1SzqSaVLFTIygw |
+| STRIPE_PRICE_YEARLY | price_1ThyYRLXAj1SzqSaHjuxYVVH |
+| SESSION_SECRET | any long random string (e.g. mash your keyboard) |
+| APP_URL | your Render URL, e.g. https://greensource.onrender.com |
+
+Click **Save, rebuild**. After it redeploys, open your Render URL — the app loads.
+
+## STEP 4 — Tell Google about your real URL
+1. Google Cloud Console -> **APIs & Services -> Credentials** -> your "GreenSource Web" client.
+2. Under **Authorized JavaScript origins**, click **+ Add URI** and add your Render URL:
+   `https://greensource.onrender.com`  (no trailing slash)
+3. Save. (Sign-in won't work until this matches your live domain.)
+
+## STEP 5 — Stripe webhook (so paid users unlock instantly)
+1. Stripe Dashboard (Test mode) -> **Developers -> Webhooks -> Add endpoint**.
+2. Endpoint URL: `https://greensource.onrender.com/api/stripe/webhook`
+3. Events to send: select
+   - `checkout.session.completed`
+   - `customer.subscription.updated`
+   - `customer.subscription.deleted`
+4. Click **Add endpoint**, then copy the **Signing secret** (`whsec_...`).
+5. Back in Render -> Environment -> add `STRIPE_WEBHOOK_SECRET = whsec_...` -> Save.
+
+## STEP 6 — Test the whole flow
+1. Open your Render URL. You should see ~100 beans + a "422 locked" banner.
+2. Click **Sign in with Google** (top-right) -> sign in.
+3. Open the **Calculator** twice -> on the 3rd it should show the paywall.
+4. Click **Upgrade** -> pick a plan -> use Stripe's **test card** `4242 4242 4242 4242`,
+   any future expiry, any CVC, any ZIP.
+5. After payment you return to the app as **PRO** — all 522 beans unlock, calculator unlimited.
+
+---
+
+## Going live (real money) — later
+- In Stripe, complete **account activation** (bank + business info), switch to **Live mode**,
+  recreate the two prices in Live mode, and swap the `sk_live_...` key + live price IDs +
+  a live webhook secret into Render. Then flip Google's consent screen to **Published**.
+
+## Notes
+- The free tier (100 beans / 2 calc uses) is enforced **on the server**, so it can't be bypassed.
+- Calculator usage counts persist per signed-in user. On Render free tier the SQLite file
+  resets on redeploy — that's fine (it's generous), and subscription status always re-syncs
+  from Stripe. For permanent storage later, add a Render Disk or Postgres (I can help).
+- Old tiiny.host site can be retired once this is live.
